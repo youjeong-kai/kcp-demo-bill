@@ -28,12 +28,13 @@
   button { flex:1; padding:11px 0; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:14px; cursor:pointer; }
   button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   .demo { text-align:center; font-size:11px; color:#9ca3af; margin:14px 0 0; }
+  .missing { text-align:center; color:var(--sub); padding:24px 0; }
   @media print { body{background:#fff} .actions,.demo{display:none} .slip{border:none;box-shadow:none} }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="slip">
+  <div class="slip" id="slip">
     <div class="head">
       <h1 id="title">신용카드 매출전표</h1>
       <div class="pg">결제대행 NHN KCP<br><span id="tno-head"></span></div>
@@ -55,6 +56,7 @@
       <tr><th>카드번호</th><td id="card_no">-</td></tr>
       <tr><th>승인번호</th><td id="appr">-</td></tr>
       <tr id="cancel-row" style="display:none"><th>취소일시</th><td id="cancel_at">-</td></tr>
+      <tr id="remain-row" style="display:none"><th>취소 후 잔여</th><td id="remain">-</td></tr>
     </table>
 
     <div class="foot">
@@ -69,31 +71,66 @@
 </div>
 <script>
 (function () {
+  // 짧은 URL(?tno=…)만으로 전표를 그린다. 거래번호 뒤 8자리가 거래 식별 키, 앞 6자리가 결제일(YYMMDD).
+  var DATA = {
+    "11420412": { mall: "데일리마트", order: "0042", appr: "30841257", amount: 39000, time: "11:42" },
+    "20170893": { mall: "오렌지마켓", order: "0089", appr: "30852146", amount: 43900, time: "20:17" },
+    "16023117": { mall: "그린스토어", order: "0311", appr: "30861973", amount: 12800, time: "16:02", cancelledFull: true },
+    "14030117": { mall: "오렌지마켓", order: "0117", appr: "30871125", amount: 89000, time: "14:03" },
+    "10250233": { mall: "오렌지마켓", order: "0233", appr: "30879412", amount: 128000, time: "10:25" }
+  };
+  var CARD = { name: "신한카드", masked: "5461-****-****-3320" };
+
   var q = new URLSearchParams(location.search);
   var get = function (k, d) { var v = q.get(k); return (v === null || v === "") ? d : v; };
   var won = function (n) { var x = Number(String(n).replace(/[^0-9.-]/g, "")); return isNaN(x) ? String(n) : x.toLocaleString("ko-KR") + "원"; };
   var set = function (id, v) { document.getElementById(id).textContent = v; };
+  var fmtDate = function (yymmdd) { return "20" + yymmdd.slice(0, 2) + "-" + yymmdd.slice(2, 4) + "-" + yymmdd.slice(4, 6); };
+  var fmtDateTime = function (digits) { // YYYYMMDDHHmm 또는 YYMMDDHHmm
+    var s = String(digits).replace(/[^0-9]/g, "");
+    if (s.length === 10) s = "20" + s;
+    if (s.length !== 12) return digits;
+    return s.slice(0, 4) + "-" + s.slice(4, 6) + "-" + s.slice(6, 8) + " " + s.slice(8, 10) + ":" + s.slice(10, 12);
+  };
 
+  var tno = get("tno", "");
+  var rec = tno.length === 14 ? DATA[tno.slice(6)] : null;
   var cmd = get("cmd", "card_bill");
-  var status = get("status", cmd === "card_cancel_bill" ? "cancel" : "ok");
-  var tno = get("tno", "-");
-  var amount = get("trade_mony", "0");
+  var isCancel = cmd.indexOf("cancel") >= 0 || get("status", "") === "cancel" || (rec && rec.cancelledFull && !q.has("cmd"));
 
-  set("tno", tno); set("tno-head", "거래번호 " + tno);
-  set("amount", won(amount)); set("quota", get("quota", "일시불"));
-  set("mall", get("mall", "-")); set("paid_at", get("paid_at", "-"));
-  set("order_no", get("order_no", "-")); set("card", get("card", "-"));
-  set("card_no", get("card_no", "****-****-****-****")); set("appr", get("appr", "-"));
+  // 값 결정: 명시 파라미터 > 내장 데이터
+  var mall = get("mall", rec ? rec.mall : "-");
+  var appr = get("appr", rec ? rec.appr : "-");
+  var card = get("card", CARD.name);
+  var cardNo = get("card_no", CARD.masked).replace(/X/g, "*");
+  var orderNo = get("order_no", rec && tno ? fmtDate(tno.slice(0, 6)).replace(/-/g, "") + "-" + rec.order : "-");
+  var paidAt = get("paid_at", rec && tno ? fmtDate(tno.slice(0, 6)) + " " + rec.time : "-");
+  var approved = rec ? rec.amount : Number(get("trade_mony", "0"));
+  var cancelAmt = Number(get("mny", get("trade_mony", rec ? rec.amount : "0")));
+  var shownAmount = isCancel ? cancelAmt : approved;
+
+  if (!rec && !q.has("trade_mony")) {
+    document.getElementById("slip").innerHTML = '<div class="missing">전표 정보를 찾을 수 없습니다. 링크를 다시 확인해 주세요.</div>';
+    return;
+  }
+
+  set("tno", tno || "-"); set("tno-head", tno ? "거래번호 " + tno : "");
+  set("amount", won(shownAmount)); set("quota", get("quota", "일시불"));
+  set("mall", mall); set("paid_at", paidAt); set("order_no", orderNo);
+  set("card", card); set("card_no", cardNo); set("appr", appr);
 
   var st = document.getElementById("status");
-  if (status === "cancel") {
-    st.textContent = get("cancel_type", "") === "partial" ? "부분취소" : "취소";
+  if (isCancel) {
+    var partial = get("cancel_type", "") === "partial" || (approved && cancelAmt < approved);
+    st.textContent = partial ? "부분취소" : "취소";
     st.className = "status cancel";
     set("title", "신용카드 매출전표 (취소)");
     document.getElementById("cancel-row").style.display = "";
-    set("cancel_at", get("cancel_at", "-"));
+    var ca = get("ca", get("cancel_at", ""));
+    set("cancel_at", ca ? fmtDateTime(ca) : "-");
+    if (partial) { document.getElementById("remain-row").style.display = ""; set("remain", won(approved - cancelAmt)); }
   }
-  document.title = document.getElementById("title").textContent + " · " + get("mall", "");
+  document.title = document.getElementById("title").textContent + " · " + mall;
   window.copyLink = function () { navigator.clipboard && navigator.clipboard.writeText(location.href); };
 })();
 </script>
