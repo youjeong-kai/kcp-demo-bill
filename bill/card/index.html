@@ -88,6 +88,8 @@
   var fmtDate = function (yymmdd) { return "20" + yymmdd.slice(0, 2) + "-" + yymmdd.slice(2, 4) + "-" + yymmdd.slice(4, 6); };
   var fmtDateTime = function (digits) { // YYYYMMDDHHmm 또는 YYMMDDHHmm
     var s = String(digits).replace(/[^0-9]/g, "");
+    if (s.length === 6) s = "20" + s;
+    if (s.length === 8) return s.slice(0, 4) + "-" + s.slice(4, 6) + "-" + s.slice(6, 8);
     if (s.length === 10) s = "20" + s;
     if (s.length !== 12) return digits;
     return s.slice(0, 4) + "-" + s.slice(4, 6) + "-" + s.slice(6, 8) + " " + s.slice(8, 10) + ":" + s.slice(10, 12);
