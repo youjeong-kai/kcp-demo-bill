@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>신용카드 매출전표</title>
+<style>
+  :root { --ink:#1b1f27; --sub:#6b7280; --line:#e5e7eb; --bg:#f5f6f8; --accent:#1e6fd9; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  .wrap { max-width: 480px; margin: 24px auto; padding: 0 16px; }
+  .slip { background:#fff; border:1px solid var(--line); border-radius:12px; padding:24px 20px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--ink); padding-bottom:12px; }
+  .head h1 { font-size:18px; margin:0; letter-spacing:-.2px; }
+  .head .pg { font-size:12px; color:var(--sub); text-align:right; line-height:1.5; }
+  .status { display:inline-block; margin-top:14px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .status.ok { background:#e8f1fd; color:var(--accent); }
+  .status.cancel { background:#fdecec; color:#c0392b; }
+  .amount { margin:14px 0 6px; font-size:28px; font-weight:700; letter-spacing:-.5px; }
+  .amount small { font-size:14px; font-weight:500; color:var(--sub); margin-left:6px; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+  th, td { text-align:left; padding:9px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { width:34%; color:var(--sub); font-weight:500; }
+  td { font-variant-numeric: tabular-nums; }
+  .section { margin-top:18px; font-size:12px; color:var(--sub); font-weight:600; letter-spacing:.3px; }
+  .foot { margin-top:18px; font-size:12px; color:var(--sub); line-height:1.6; }
+  .actions { display:flex; gap:8px; margin-top:16px; }
+  button { flex:1; padding:11px 0; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:14px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .demo { text-align:center; font-size:11px; color:#9ca3af; margin:14px 0 0; }
+  @media print { body{background:#fff} .actions,.demo{display:none} .slip{border:none;box-shadow:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="slip">
+    <div class="head">
+      <h1 id="title">신용카드 매출전표</h1>
+      <div class="pg">결제대행 NHN KCP<br><span id="tno-head"></span></div>
+    </div>
+    <span id="status" class="status ok">승인</span>
+    <div class="amount"><span id="amount">-</span><small id="quota">일시불</small></div>
+
+    <div class="section">거래 정보</div>
+    <table>
+      <tr><th>가맹점명</th><td id="mall">-</td></tr>
+      <tr><th>결제일시</th><td id="paid_at">-</td></tr>
+      <tr><th>주문번호</th><td id="order_no">-</td></tr>
+      <tr><th>거래번호</th><td id="tno">-</td></tr>
+    </table>
+
+    <div class="section">카드 정보</div>
+    <table>
+      <tr><th>카드사</th><td id="card">-</td></tr>
+      <tr><th>카드번호</th><td id="card_no">-</td></tr>
+      <tr><th>승인번호</th><td id="appr">-</td></tr>
+      <tr id="cancel-row" style="display:none"><th>취소일시</th><td id="cancel_at">-</td></tr>
+    </table>
+
+    <div class="foot">
+      본 전표는 신용카드 결제 승인 내역을 증명하는 매출전표입니다. 가맹점 문의는 위 가맹점명으로, 결제대행 관련 문의는 NHN KCP 고객센터로 연락해 주세요.
+    </div>
+    <div class="actions">
+      <button onclick="window.print()">인쇄·저장</button>
+      <button class="primary" onclick="copyLink()">링크 복사</button>
+    </div>
+  </div>
+  <p class="demo">시연 환경에서 생성된 전표입니다.</p>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var get = function (k, d) { var v = q.get(k); return (v === null || v === "") ? d : v; };
+  var won = function (n) { var x = Number(String(n).replace(/[^0-9.-]/g, "")); return isNaN(x) ? String(n) : x.toLocaleString("ko-KR") + "원"; };
+  var set = function (id, v) { document.getElementById(id).textContent = v; };
+
+  var cmd = get("cmd", "card_bill");
+  var status = get("status", cmd === "card_cancel_bill" ? "cancel" : "ok");
+  var tno = get("tno", "-");
+  var amount = get("trade_mony", "0");
+
+  set("tno", tno); set("tno-head", "거래번호 " + tno);
+  set("amount", won(amount)); set("quota", get("quota", "일시불"));
+  set("mall", get("mall", "-")); set("paid_at", get("paid_at", "-"));
+  set("order_no", get("order_no", "-")); set("card", get("card", "-"));
+  set("card_no", get("card_no", "****-****-****-****")); set("appr", get("appr", "-"));
+
+  var st = document.getElementById("status");
+  if (status === "cancel") {
+    st.textContent = get("cancel_type", "") === "partial" ? "부분취소" : "취소";
+    st.className = "status cancel";
+    set("title", "신용카드 매출전표 (취소)");
+    document.getElementById("cancel-row").style.display = "";
+    set("cancel_at", get("cancel_at", "-"));
+  }
+  document.title = document.getElementById("title").textContent + " · " + get("mall", "");
+  window.copyLink = function () { navigator.clipboard && navigator.clipboard.writeText(location.href); };
+})();
+</script>
+</body>
+</html>
